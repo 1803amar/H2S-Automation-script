@@ -1,0 +1,23 @@
+{
+  "name": "h2s-automation-script",
+  "version": "1.0.0",
+  "description": "This repository hosts Playwright automation scripts written in JavaScript for H2S products, covering functional and regression test scenarios.",
+  "main": "index.js",
+  "scripts": {},
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/1803amar/H2S-Automation-script.git"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "type": "commonjs",
+  "bugs": {
+    "url": "https://github.com/1803amar/H2S-Automation-script/issues"
+  },
+  "homepage": "https://github.com/1803amar/H2S-Automation-script#readme",
+  "devDependencies": {
+    "@playwright/test": "^1.57.0",
+    "@types/node": "^25.0.3"
+  }
+}
