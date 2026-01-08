@@ -19,24 +19,33 @@ test('Valid Login', async ({ page }) => {
   await page.getByPlaceholder('Enter Email').fill('amar@hack2skill.com');
 
 //   Click on login button
-  await page.locator('.buttonv1Comp.mt-2').click();
+  await page.locator('[data-id="auth-login-button"]').click();
 
 //   Wait for 3 sec
   await page.waitForTimeout(3000);
 
 //   Enter OTP recived on entered Email id
-  await page.locator(`input[aria-label='Please enter OTP character 1']`).fill('123456');
+  // await page.locator('[data-id="auth-otp-input"][0]').fill('123456');
+  const otp = '123456';
+const otpInputs = page.locator('[data-id="auth-otp-input"]');
+
+for (let i = 0; i < otp.length; i++) {
+  await otpInputs.nth(i).fill(otp[i]);
+}
 
 //   Click on Verify button
-  await page.locator('.buttonv1Comp.mt-4.mb-6').click();
+  await page.locator('[data-id="auth-verify-button"]').click();
 
 //   Wait for 3 sec
   await page.waitForTimeout(3000);
 
 //   Click on profile icon on navbar after login 
-  await page.locator('body > div:nth-child(1) > main:nth-child(2) > div:nth-child(1) > nav:nth-child(1) > div:nth-child(1) > div:nth-child(1) > div:nth-child(4) > ul:nth-child(1) > li:nth-child(5)').click();
+  await page.locator('[data-id="nav-profile-button"]').click();
 
-  // await page.locator('.cursor-pointer:has-text("Logout")').click();
+  // Click on log out button
+  // await page.locator('[data-id="nav-logout-button"]').click();
+  await page.locator('[data-id="nav-logout-button"]:visible').click();
+
 
   await page.waitForTimeout(3000);
 
