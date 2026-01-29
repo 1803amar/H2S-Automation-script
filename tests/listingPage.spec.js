@@ -47,8 +47,11 @@ test('hackthon listing page', async ({ page }) => {
 
     // await page.getByRole('button', { name: '15/01/2024 - 15/01/2027' }).click();
 
+    // To click on reset button
+    await page.locator('[data-id="hackathon-listing-filter-reset"]').click();
+
     // Click on apply button for filter
-    await page.locator('[data-id="hackathon-listing-filter-apply"]').click();
+    // await page.locator('[data-id="hackathon-listing-filter-apply"]').click();
     // await page.getByRole('button', { name: 'Apply' }).click();
 
     // Click on cross icon to close the filter section
