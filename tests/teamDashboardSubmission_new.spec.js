@@ -1,5 +1,41 @@
 // This script is only for My better understanding (Not official script)
 
+// Website Open
+//     ↓
+// Cookie Accept (agar ho)
+//     ↓
+// Email + OTP se Login
+//     ↓
+// Submissions Tab Click
+//     ↓
+// ┌─────────────────────────────┐
+// │  LOOP (MAX_ADD_SUBMISSIONS) │
+// │  Form Fill karo:            │
+// │  1. Challenge dropdown      │
+// │  2. Short answer            │
+// │  3. Paragraph               │
+// │  4. Link                    │
+// │  5. MCQ radio               │
+// │  6. File upload             │
+// │  7. Searchable dropdown     │
+// │  8. Normal dropdown         │
+// │  9. Slider (value=5)        │
+// │  10. Date                   │
+// │  11. Time                   │
+// │       ↓                     │
+// │  "Add Submission" visible?  │
+// │  Aur limit nahi aayi?       │
+// │  YES → Click → Repeat loop │
+// │  NO  → Loop se bahar       │
+// └─────────────────────────────┘
+//     ↓
+// Submit button click
+//     ↓
+// Confirmation modal → Submit
+//     ↓
+// Success message verify
+
+
 const { test, expect } = require('@playwright/test');
 // ↑ Playwright se "test" aur "expect" functions import kar rahe hain
 // "test" → ek test case define karne ke liye
