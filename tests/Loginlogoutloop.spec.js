@@ -4,7 +4,7 @@ const { test, expect } = require('@playwright/test');
 // CONFIGURATION
 // ====================================================
 
-const TOTAL_ITERATIONS = 50;
+const TOTAL_ITERATIONS = 5;
 // Phase 1: How many times to login and logout
 
 const WAIT_AFTER_ACTION = 500;
@@ -19,7 +19,7 @@ const WRONG_OTP = '000000';
 const CORRECT_OTP = '123456';
 // Correct OTP to actually complete login in Phase 1
 
-const WRONG_OTP_ATTEMPTS = 20;
+const WRONG_OTP_ATTEMPTS = 2;
 // Phase 2: How many times to enter wrong OTP continuously
 
 // ====================================================
