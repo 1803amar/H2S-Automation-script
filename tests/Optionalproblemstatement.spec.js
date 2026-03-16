@@ -168,7 +168,7 @@ test('Submission allowed without selecting problem statement when it is optional
   }
 
   const finalSliderValue = await slider.getAttribute('aria-valuenow');
-  console.log(Slider set to: ${finalSliderValue} (target: ${SLIDER_TARGET_SCORE}));
+  console.log(`Slider set to: ${finalSliderValue} (target: ${SLIDER_TARGET_SCORE})`);
 
   // --- Date & Time fields ---
   const dateField = page.getByPlaceholder('Enter Date type question').last();
@@ -181,7 +181,7 @@ test('Submission allowed without selecting problem statement when it is optional
 
   await expect(page.getByText('Value must be 12:59 or earlier.')).not.toBeVisible();
 
-  console.log(All fields filled — problem statement intentionally left blank);
+  console.log(`All fields filled — problem statement intentionally left blank`);
 
   // ====================================================
   // STEP 8: Submit the form
@@ -225,5 +225,5 @@ test('Submission allowed without selecting problem statement when it is optional
   // ====================================================
   // FINAL: Test passed
   // ====================================================
-  console.log(SCENARIO 5 PASSED - Submission was successful without selecting a problem statement. Problem statement was: ${isRequired ? 'MANDATORY' : 'OPTIONAL'}.);
+  console.log(`SCENARIO 5 PASSED - Submission was successful without selecting a problem statement. Problem statement was: ${isRequired ? 'MANDATORY' : 'OPTIONAL'}.`);
 });
