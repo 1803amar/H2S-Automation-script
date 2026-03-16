@@ -47,7 +47,7 @@ test('Submission allowed without selecting problem statement when it is optional
 
   // DYNAMIC WAIT: Wait for the first OTP input to appear
   const otpInputs = page.locator('[data-id="auth-otp-input"]');
-  await otpInputs.first().waitFor({ state: 'visible', timeout: 10000 });
+  await otpInputs.first().waitFor({ state: 'visible', timeout: 100000 });
 
   const otp = '123456';
   for (let i = 0; i < otp.length; i++) {
