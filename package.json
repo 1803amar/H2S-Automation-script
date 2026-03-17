@@ -3,7 +3,9 @@
   "version": "1.0.0",
   "description": "This repository hosts Playwright automation scripts written in JavaScript for H2S products, covering functional and regression test scenarios.",
   "main": "index.js",
-  "scripts": {},
+  "scripts": {
+    "start": "npx playwright test"
+  },
   "repository": {
     "type": "git",
     "url": "git+https://github.com/1803amar/H2S-Automation-script.git"
