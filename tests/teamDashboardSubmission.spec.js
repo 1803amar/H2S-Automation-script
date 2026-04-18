@@ -1,245 +1,363 @@
 const { test, expect } = require('@playwright/test');
 
-// ✅ Max number of times "Add Submission" button will be clicked (i.e. total forms = MAX_ADD_SUBMISSIONS + 1)
-// After MAX_ADD_SUBMISSIONS clicks OR if "Add Submission" button is not visible → Submit button will be clicked
+// ====================================================
+// CONFIGURATION
+// ====================================================
+
+// Max number of times "Add Submission" button will be clicked
+// Total forms filled = MAX_ADD_SUBMISSIONS + 1
+// After MAX_ADD_SUBMISSIONS clicks OR if "Add Submission" button
+// is not visible, the Submit button will be clicked
 const MAX_ADD_SUBMISSIONS = 3;
 
-test('Team dashboard project submission', async ({ page }) => {
-  test.setTimeout(120000); // 2 minutes timeout for multiple form fills
-
-  // Open Login Page (using team dashboard url)
-  await page.goto(
-    'https://alphavision.hack2skill.com/event/platform-automation-sandbox/dashboard/roadmap'
-  );
-  await page.waitForTimeout(3000);
-
-  // Accept Cookie and if cookies are accepted then print "✅ Cookie accepted" on console
-  const cookieBtn = page.locator('[data-id="accept-cookies"]');
-  if (await cookieBtn.isVisible({ timeout: 5000 }).catch(() => false)) {
-    await cookieBtn.click();
-    await cookieBtn.waitFor({ state: 'hidden' });
-    console.log('✅ Cookie accepted');
+// ====================================================
+// HELPER: Dismiss cookie banner if it appears
+// ====================================================
+async function dismissCookieBanner(page) {
+  const btn = page.locator('[data-id="accept-cookies"]');
+  try {
+    // Wait for cookie button to become visible (max 8 sec)
+    await expect(btn).toBeVisible({ timeout: 8000 });
+    await btn.click();
+    // Wait for banner to hide after clicking
+    await expect(btn).toBeHidden({ timeout: 8000 });
+    console.log('Cookie accepted');
+  } catch {
+    // If banner never appeared, skip silently
+    console.log('ℹ️ Cookie banner not found, skipping');
   }
+}
 
-  // Enter Email Id and click login button
-  await page.getByPlaceholder('Enter Email').fill('amar@hack2skill.com');
-  await page.locator('[data-id="auth-login-button"]').click();
-  await page.waitForTimeout(3000);
+// ====================================================
+// HELPER: Login with email and OTP
+// ====================================================
+async function loginWithOtp(page, email, otp) {
+  // Wait for email field to be visible, then fill it
+  const emailInput = page.getByPlaceholder('Enter Email');
+  await expect(emailInput).toBeVisible({ timeout: 15000 });
+  await emailInput.fill(email);
 
-  // Enter OTP and click verify button
-  const otp = '123456';
+  // Wait for login button to be visible and enabled, then click
+  const loginBtn = page.locator('[data-id="auth-login-button"]');
+  await expect(loginBtn).toBeVisible();
+  await expect(loginBtn).toBeEnabled();
+  await loginBtn.click();
+
+  // Wait for OTP screen heading to confirm page has transitioned
+  // Note: login button is removed from DOM once OTP screen loads
+  // so we must NOT wait for loginBtn after click — it will never be found
+  await expect(
+    page.getByRole('heading', { name: 'Verify Your Account' })
+  ).toBeVisible({ timeout: 15000 });
+
+  // Wait for OTP input boxes to appear, verify count is 6
   const otpInputs = page.locator('[data-id="auth-otp-input"]');
+  await expect(otpInputs.first()).toBeVisible({ timeout: 15000 });
+  await expect(otpInputs).toHaveCount(6);
+
+  // Fill each OTP digit into its corresponding input box
   for (let i = 0; i < otp.length; i++) {
     await otpInputs.nth(i).fill(otp[i]);
   }
-  await page.locator('[data-id="auth-verify-button"]').click();
 
-  // Click on Submissions Tab on Team dashboard Roadmap
-  const tabList = page.getByRole('tablist');
-  const submissionsTab = tabList.getByRole('tab', { name: 'Submissions', exact: true });
-  await submissionsTab.scrollIntoViewIfNeeded();
-  await submissionsTab.click();
-  await expect(submissionsTab).toHaveAttribute('aria-selected', 'true');
+  // Wait for verify button to be visible and enabled, then click
+  const verifyBtn = page.locator('[data-id="auth-verify-button"]');
+  await expect(verifyBtn).toBeVisible();
+  await expect(verifyBtn).toBeEnabled();
+  await verifyBtn.click();
 
+  console.log('Login successful');
+}
 
-  // ============================================================
-  // Helper Function: Scroll + Fill
-  // ============================================================
-  async function fillField(locator, value) {
-    await locator.waitFor({ state: 'visible', timeout: 10000 });
-    await locator.scrollIntoViewIfNeeded();
-    await locator.fill(value);
+// ====================================================
+// HELPER: Navigate to a named tab — uses .first() to
+// avoid strict mode error when two tablists exist on page
+// ====================================================
+async function clickTab(page, tabName, tabList = null) {
+  // Use provided tablist locator, or locate tab directly on page
+  // .first() used because page has two tablists with same aria-label
+  const tab = tabList
+    ? tabList.getByRole('tab', { name: tabName, exact: true })
+    : page.getByRole('tab', { name: tabName, exact: true }).first();
+
+  // Wait for tab to be visible, scroll into view, then click
+  await expect(tab).toBeVisible({ timeout: 10000 });
+  await tab.scrollIntoViewIfNeeded();
+  await tab.click();
+
+  // Verify the tab is now selected
+  await expect(tab).toHaveAttribute('aria-selected', 'true');
+
+  return tab;
+}
+
+// ====================================================
+// HELPER: Fill a visible text field with a value
+// ====================================================
+async function fillField(locator, value) {
+  // Wait for field to be visible, scroll into view, then fill
+  await expect(locator).toBeVisible({ timeout: 10000 });
+  await locator.scrollIntoViewIfNeeded();
+  await locator.fill(value);
+}
+
+// ====================================================
+// HELPER: Set linear scale slider to a target score
+// ====================================================
+async function setSliderScore(page, targetScore) {
+  // Always target the LAST slider — newest form section
+  const slider = page.locator('[role="slider"]').last();
+  await expect(slider).toBeVisible({ timeout: 10000 });
+  await slider.scrollIntoViewIfNeeded();
+  await slider.focus();
+  // Press Home to reset to minimum, then ArrowRight to reach target
+  await page.keyboard.press('Home');
+
+  const min = Number(await slider.getAttribute('aria-valuemin') ?? '1');
+  const steps = targetScore - min;
+  // Calculate how many steps needed to reach target score from minimum
+
+  for (let i = 0; i < steps; i++) {
+    await page.keyboard.press('ArrowRight');
   }
+  // Move slider one step at a time to reach target score
 
-  // ============================================================
-  // Helper Function: Set Slider Score
-  // ============================================================
-  async function setSliderScore(page, targetScore) {
-    // Always target the LAST slider — newest form section
-    const slider = page.locator('[role="slider"]').last();
-    await slider.scrollIntoViewIfNeeded();
-    await slider.waitFor({ state: 'visible' });
-    await slider.focus();
-    // First press Home to reset to minimum, then ArrowRight to target value
-    await page.keyboard.press('Home');
-    await page.waitForTimeout(300);
-    const min = Number(await slider.getAttribute('aria-valuemin') ?? '1');
-    const steps = targetScore - min;
-    for (let i = 0; i < steps; i++) {
-      await page.keyboard.press('ArrowRight');
-      await page.waitForTimeout(150);
-    }
-    // Verify final value
-    const finalValue = await slider.getAttribute('aria-valuenow');
-    console.log(`🎚️ Slider set to: ${finalValue} (target: ${targetScore})`);
-  }
+  const finalValue = await slider.getAttribute('aria-valuenow');
+  console.log(`Slider set to: ${finalValue} (target: ${targetScore})`);
+}
 
-  // ============================================================
-  // Helper: Wait for page to stabilize after scroll reset
-  // ============================================================
-  async function waitForPageStable() {
-    await page.waitForLoadState('domcontentloaded');
-    await page.waitForTimeout(2000);
-    // Scroll back to top so all elements are accessible from top
-    await page.evaluate(() => window.scrollTo(0, 0));
-    await page.waitForTimeout(1000);
-  }
+// ====================================================
+// HELPER: Wait for page to stabilize after scroll reset
+// ====================================================
+async function waitForPageStable(page) {
+  // Wait for DOM to load, then scroll back to top
+  await page.waitForLoadState('domcontentloaded');
+  await page.evaluate(() => window.scrollTo(0, 0));
 
-  // ============================================================
-  // Main Form Fill Function (runs multiple times)
-  // ============================================================
-  async function fillAndAddSubmission(runIndex) {
-    console.log(`\n📝 Form Fill Run #${runIndex + 1} started...`);
+  // Confirm page is stable by waiting for problem statement dropdown
+  await expect(page.locator('#problemStatements').last()).toBeVisible({ timeout: 10000 });
+}
 
-    // Wait for page to stabilize (especially important after Add Submission click)
-    await waitForPageStable();
+// ====================================================
+// HELPER: Fill one complete form section
+// Always targets .last() — fills the newest appended form
+// ====================================================
+async function fillAndAddSubmission(page, runIndex) {
+  console.log(`\nForm Fill Run #${runIndex + 1} started...`);
 
-    // ⚠️ After each "Add Submission" click, a new form section is APPENDED at the bottom.
-    // So we always target the LAST form section using .last() — this way we always fill the newest form.
+  // Wait for page to stabilize before filling
+  // Important especially after "Add Submission" click appends a new section
+  await waitForPageStable(page);
 
-    // Select Challenge / Problem Statement — always target LAST instance
-    const challengeDropdown = page.locator('#problemStatements').last();
-    await challengeDropdown.waitFor({ state: 'visible', timeout: 10000 });
-    await challengeDropdown.scrollIntoViewIfNeeded();
-    await page.waitForTimeout(300);
-    await challengeDropdown.selectOption({ value: '6992aed1cc85ebfb1c17540f' });
+  // After each "Add Submission" click, a new form section is APPENDED at the bottom
+  // So we always target .last() to fill the newest form section
 
-    // Short answer type question — LAST instance
-    await fillField(
-      page.getByRole('textbox', { name: 'Short answer type questions' }).last(),
-      'This is dummy text for Short answer type questions'
-    );
+  // --- Challenge / Problem Statement dropdown ---
+  const challengeDropdown = page.locator('#problemStatements').last();
+  await expect(challengeDropdown).toBeVisible({ timeout: 10000 });
+  await challengeDropdown.scrollIntoViewIfNeeded();
+  await challengeDropdown.selectOption({ value: '6992aed1cc85ebfb1c17540f' });
 
-    // Paragraph type question — LAST instance
-    await fillField(
-      page.getByRole('textbox', { name: 'Enter Paragraph type question' }).last(),
-      'This is dummy text for Paragraph type questions'
-    );
+  // --- Short answer type question ---
+  await fillField(
+    page.getByRole('textbox', { name: 'Short answer type questions' }).last(),
+    'This is dummy text for Short answer type questions'
+  );
 
-    // Link type question — LAST instance
-    await fillField(
-      page.getByRole('textbox', { name: 'Link type question' }).last(),
-      'https://www.lipsum.com/'
-    );
+  // --- Paragraph type question ---
+  await fillField(
+    page.getByRole('textbox', { name: 'Enter Paragraph type question' }).last(),
+    'This is dummy text for Paragraph type questions'
+  );
 
-    // MCQ - Select radio option — LAST instance
-    const mcqRadio = page.locator('input[type="radio"][value="option 2"]').last();
-    await mcqRadio.scrollIntoViewIfNeeded();
-    await mcqRadio.check();
+  // --- Link type question ---
+  await fillField(
+    page.getByRole('textbox', { name: 'Link type question' }).last(),
+    'https://www.lipsum.com/'
+  );
 
-    // File Upload — LAST instance
-    const fileInput = page.locator('input[type="file"]').last();
-    await fileInput.scrollIntoViewIfNeeded();
-    await fileInput.setInputFiles('asset/challenges.png');
-    // After file selection, a modal opens with an "Upload" button — always click that modal's Upload button
-    const uploadModalBtn = page.getByRole('button', { name: 'Upload', exact: true });
-    await uploadModalBtn.waitFor({ state: 'visible', timeout: 10000 });
-    await uploadModalBtn.click();
-    // Wait for modal to close before proceeding
-    await uploadModalBtn.waitFor({ state: 'hidden', timeout: 10000 });
+  // --- MCQ — select radio option 2 ---
+  const mcqRadio = page.locator('input[type="radio"][value="option 2"]').last();
+  await expect(mcqRadio).toBeAttached({ timeout: 10000 });
+  // Radio inputs may be CSS-hidden — check attached instead of visible
+  await mcqRadio.scrollIntoViewIfNeeded();
+  await mcqRadio.check();
 
-    // Searchable Dropdown — LAST instance
-    // Using input[id] pattern — React Select renders an <input> with a generated id inside the combobox container
-    // The input is hidden by default but becomes interactive on click
-    // We use the label to scope, then find the react-select input inside
-    const searchableLabel = page.locator('text=Searchable dropdown type question').last();
-    await searchableLabel.scrollIntoViewIfNeeded();
-    await page.waitForTimeout(500);
+  // --- File upload ---
+  const fileInput = page.locator('input[type="file"]').last();
+  await expect(fileInput).toBeAttached({ timeout: 10000 });
+  // File inputs are hidden by default — check attached instead of visible
+  await fileInput.setInputFiles('asset/challenges.png');
 
-    // React Select: input[id^="react-select-"] — always targets the React Select input
-    const searchableCbx = page.locator('input[id^="react-select-"]').last();
-    await searchableCbx.scrollIntoViewIfNeeded();
-    await searchableCbx.waitFor({ state: 'attached', timeout: 10000 });
+  // After file selection, a modal opens with an Upload button — click it
+  const uploadModalBtn = page.getByRole('button', { name: 'Upload', exact: true });
+  await expect(uploadModalBtn).toBeVisible({ timeout: 10000 });
+  await uploadModalBtn.click();
 
-    // Force click directly on input to open dropdown + clear existing value
-    await searchableCbx.click({ force: true });
-    await page.waitForTimeout(300);
-    await searchableCbx.press('Control+a');
-    await searchableCbx.press('Backspace');
-    await page.waitForTimeout(300);
+  // Wait for upload modal to close before continuing
+  await expect(uploadModalBtn).toBeHidden({ timeout: 10000 });
 
-    // Type the search value
-    await searchableCbx.pressSequentially('abcd', { delay: 100 });
-    await page.waitForTimeout(500);
-    await page.getByRole('option', { name: 'abcd', exact: true }).click();
-    await page.waitForTimeout(300);
+  // --- Searchable dropdown (React Select) ---
+  // React Select renders a hidden <input> with generated id inside the combobox
+  // Use .last() to always target the newest form's React Select input
+  const searchableLabel = page.locator('text=Searchable dropdown type question').last();
+  await expect(searchableLabel).toBeVisible({ timeout: 10000 });
+  await searchableLabel.scrollIntoViewIfNeeded();
 
-    // Normal Dropdown — LAST select that is NOT #problemStatements
-    const dropdownQuestion = page.locator('select:not(#problemStatements)').last();
-    await dropdownQuestion.waitFor({ state: 'visible', timeout: 10000 });
-    await dropdownQuestion.scrollIntoViewIfNeeded();
-    await page.waitForTimeout(300);
-    await dropdownQuestion.selectOption({ label: 'dropdown 3' });
+  const searchableCbx = page.locator('input[id^="react-select-"]').last();
+  await expect(searchableCbx).toBeAttached({ timeout: 10000 });
+  // React Select input is hidden by default — check attached not visible
 
-    // Linear Scale Slider — LAST instance
-    await setSliderScore(page, 5);
+  await searchableCbx.click({ force: true });
+  // Force click to open the dropdown
 
-    // Date field — LAST instance
-    const dateField = page.getByPlaceholder('Enter Date type question').last();
-    await dateField.waitFor({ state: 'visible', timeout: 10000 });
-    await dateField.scrollIntoViewIfNeeded();
-    await page.waitForTimeout(300);
-    await dateField.fill('2026-03-20');
+  await searchableCbx.press('Control+a');
+  await searchableCbx.press('Backspace');
+  // Clear any previously selected value
 
-    // Time field — LAST instance
-    const timeField = page.getByPlaceholder('Enter Time type question').last();
-    await timeField.waitFor({ state: 'visible', timeout: 10000 });
-    await timeField.scrollIntoViewIfNeeded();
-    await page.waitForTimeout(300);
-    await timeField.fill('11:30');
-    await expect(page.getByText('Value must be 12:59 or earlier.')).not.toBeVisible();
+  await searchableCbx.pressSequentially('abcd', { delay: 100 });
+  // Type search term character by character to trigger dropdown suggestions
 
-    console.log(`✅ Form Fill Run #${runIndex + 1} completed.`);
-  }
+  const dropdownOption = page.getByRole('option', { name: 'abcd', exact: true });
+  await expect(dropdownOption).toBeVisible({ timeout: 5000 });
+  await dropdownOption.click();
+  // Wait for option to appear then click it
 
-  // ============================================================
-  // Loop: Fill form → click "Add Submission" if visible AND under limit → else Submit
+  // --- Normal dropdown ---
+  // Target the last native <select> that is NOT the problem statement dropdown
+  const dropdownQuestion = page.locator('select:not(#problemStatements)').last();
+  await expect(dropdownQuestion).toBeVisible({ timeout: 10000 });
+  await dropdownQuestion.scrollIntoViewIfNeeded();
+  await dropdownQuestion.selectOption({ label: 'dropdown 3' });
+
+  // --- Linear scale slider ---
+  await setSliderScore(page, 5);
+
+  // --- Date field ---
+  const dateField = page.getByPlaceholder('Enter Date type question').last();
+  await expect(dateField).toBeVisible({ timeout: 10000 });
+  await dateField.scrollIntoViewIfNeeded();
+  await dateField.fill('2026-03-20');
+  // Fill date in YYYY-MM-DD format (HTML date input standard)
+
+  // --- Time field ---
+  const timeField = page.getByPlaceholder('Enter Time type question').last();
+  await expect(timeField).toBeVisible({ timeout: 10000 });
+  await timeField.scrollIntoViewIfNeeded();
+  await timeField.fill('11:30');
+  // Fill time in HH:MM format (24-hour)
+
+  // Verify no time validation error is shown after filling time
+  await expect(page.getByText('Value must be 12:59 or earlier.')).not.toBeVisible();
+
+  console.log(`Form Fill Run #${runIndex + 1} completed.`);
+}
+
+// ====================================================
+// TEST: Team dashboard project submission
+// ====================================================
+
+test('Team dashboard project submission', async ({ page }) => {
+
+  test.setTimeout(120000);
+  // Allow up to 2 minutes since multiple form fills are involved
+
+  // ====================================================
+  // STEP 1: Open the dashboard page and wait for DOM to load
+  // ====================================================
+  await page.goto(
+    'https://alphavision.hack2skill.com/event/platform-automation-sandbox/dashboard/roadmap',
+    { waitUntil: 'domcontentloaded' }
+  );
+
+  // ====================================================
+  // STEP 2: Dismiss cookie banner if it appears
+  // ====================================================
+  await dismissCookieBanner(page);
+
+  // ====================================================
+  // STEP 3: Log in with email and OTP
+  // ====================================================
+  await loginWithOtp(page, 'amar@hack2skill.com', '123456');
+
+  // Wait for main dashboard tablist to be visible after login
+  // Use .first() to avoid strict mode error — page has two tablists with same aria-label
+  const tabList = page.getByRole('tablist').first();
+  await expect(tabList).toBeVisible({ timeout: 15000 });
+
+  // ====================================================
+  // STEP 4: Navigate to the Submissions tab
+  // ====================================================
+  await clickTab(page, 'Submissions', tabList);
+  console.log('Navigated to Submissions tab');
+
+  // ====================================================
+  // STEP 5: Click the Ongoing sub-tab
+  // ====================================================
+  await clickTab(page, 'Ongoing');
+  console.log('Navigated to Ongoing sub-tab');
+
+  // ====================================================
+  // STEP 6: Fill form loop
+  // Fill form → click "Add Submission" if visible AND under limit → else Submit
   // Total forms filled = up to MAX_ADD_SUBMISSIONS + 1
-  // ============================================================
+  // ====================================================
   for (let i = 0; i <= MAX_ADD_SUBMISSIONS; i++) {
-    await fillAndAddSubmission(i);
+
+    await fillAndAddSubmission(page, i);
 
     const addBtn = page.getByText('Add Submission', { exact: true });
     const addBtnVisible = await addBtn.isVisible({ timeout: 3000 }).catch(() => false);
 
     if (i < MAX_ADD_SUBMISSIONS && addBtnVisible) {
-      console.log(`🔁 Clicking "Add Submission" for run #${i + 1}...`);
+      // More forms to fill and button is visible — click Add Submission
+      console.log(`Clicking "Add Submission" for run #${i + 1}...`);
       await addBtn.click();
-      await page.waitForTimeout(3000);
+
+      // Wait for new form section to be appended before next fill
+      await expect(page.locator('#problemStatements').last()).toBeVisible({ timeout: 10000 });
     } else {
-      // Either reached max OR button not visible — proceed to Submit
+      // Either reached max limit OR button not visible — proceed to Submit
       if (!addBtnVisible) {
-        console.log(`ℹ️ "Add Submission" button not visible after run #${i + 1}, proceeding to Submit.`);
+        console.log(`"Add Submission" button not visible after run #${i + 1}, proceeding to Submit.`);
       } else {
-        console.log(`✅ Reached max ${MAX_ADD_SUBMISSIONS} add submissions, proceeding to Submit.`);
+        console.log(`Reached max ${MAX_ADD_SUBMISSIONS} add submissions, proceeding to Submit.`);
       }
       break;
     }
   }
 
-  // Click Submit button (Form Project Submission Section)
+  // ====================================================
+  // STEP 7: Click the form Submit button
+  // ====================================================
   const firstSubmit = page.getByRole('button', { name: 'Submit' }).first();
   await expect(firstSubmit).toBeVisible();
   await firstSubmit.scrollIntoViewIfNeeded();
   await firstSubmit.click();
+  // Click the first Submit button in the form section
 
-  // Wait for confirm submission Modal
+  // ====================================================
+  // STEP 8: Handle the confirmation modal
+  // ====================================================
+  // Wait for confirmation modal to appear
   const modal = page.locator('text=Submit Project for Evaluation');
   await expect(modal).toBeVisible({ timeout: 15000 });
-  await page.waitForTimeout(2000);
 
-  // Click Submit button on confirm submission Modal
+  // Click Submit button inside the confirmation modal
   const confirmSubmit = page.getByRole('button', { name: 'Submit' }).last();
-  await expect(confirmSubmit).toBeVisible();
+  await expect(confirmSubmit).toBeVisible({ timeout: 5000 });
   await confirmSubmit.click();
 
-  // Verify Success Message
-  try {
-    const successMessage = page.getByText('Submission submitted successfully!');
-    await expect(successMessage).toBeVisible({ timeout: 15000 });
-    console.log('✅ Submission submitted successfully message appeared on the screen.');
-  } catch {
-    console.log('❌ Submission submitted successfully message did not appear on the screen.');
-  }
+  // Wait for modal to close after submission
+  await expect(modal).toBeHidden({ timeout: 30000 });
+
+  // ====================================================
+  // STEP 9: Verify success message
+  // ====================================================
+  const successMessage = page.getByText('Submission submitted successfully!');
+  await expect(successMessage).toBeVisible({ timeout: 15000 });
+  // If success message is not visible, test will fail with a clear message
+
+  console.log('Submission submitted successfully message appeared on the screen.');
 
 });
