@@ -1,5 +1,98 @@
 const { test, expect } = require('@playwright/test');
 
+// Force a completely fresh browser context for this test file
+// Prevents cookie/session bleed from other tests running in the same suite
+test.use({ storageState: undefined });
+
+// ====================================================
+// HELPER: Dismiss cookie banner if it appears
+// ====================================================
+async function dismissCookieBanner(page) {
+  const btn = page.locator('[data-id="accept-cookies"]');
+  try {
+    // Wait for cookie button to become visible (max 8 sec)
+    await expect(btn).toBeVisible({ timeout: 8000 });
+    await btn.click();
+    // Wait for banner to hide after clicking
+    await expect(btn).toBeHidden({ timeout: 8000 });
+    console.log('Cookie accepted');
+  } catch {
+    // If banner never appeared, skip silently
+    console.log('ℹ️ Cookie banner not found, skipping');
+  }
+}
+
+// ====================================================
+// HELPER: Login with email and OTP
+// ====================================================
+async function loginWithOtp(page, email, otp) {
+  // Wait for email field to be visible, then fill it
+  const emailInput = page.getByPlaceholder('Enter Email');
+  await expect(emailInput).toBeVisible({ timeout: 15000 });
+  await emailInput.fill(email);
+
+  // Wait for login button to be visible and enabled, then click
+  const loginBtn = page.locator('[data-id="auth-login-button"]');
+  await expect(loginBtn).toBeVisible();
+  await expect(loginBtn).toBeEnabled();
+  await loginBtn.click();
+
+  // Wait for login button to disappear from DOM
+  // Confirms OTP request was sent and page is transitioning to OTP screen
+  await expect(loginBtn).toBeHidden({ timeout: 15000 });
+
+  // Wait for OTP screen heading to confirm page has fully transitioned
+  await expect(
+    page.getByRole('heading', { name: 'Verify Your Account' })
+  ).toBeVisible({ timeout: 15000 });
+
+  // Wait for OTP input boxes to appear, verify count is 6
+  const otpInputs = page.locator('[data-id="auth-otp-input"]');
+  await expect(otpInputs.first()).toBeVisible({ timeout: 15000 });
+  await expect(otpInputs).toHaveCount(6);
+
+  // Fill each OTP digit into its corresponding input box
+  for (let i = 0; i < otp.length; i++) {
+    await otpInputs.nth(i).fill(otp[i]);
+  }
+
+  // Wait for verify button to be visible and enabled, then click
+  const verifyBtn = page.locator('[data-id="auth-verify-button"]');
+  await expect(verifyBtn).toBeVisible();
+  await expect(verifyBtn).toBeEnabled();
+  await verifyBtn.click();
+
+  // Wait for navbar profile button to confirm login is fully complete
+  // This ensures dashboard has loaded before any further navigation
+  await expect(
+    page.locator('[data-id="nav-profile-button"]')
+  ).toBeVisible({ timeout: 15000 });
+
+  console.log('Login successful');
+}
+
+// ====================================================
+// HELPER: Navigate to a named tab inside a tablist
+// ====================================================
+async function clickTab(page, tabName, tabList = null) {
+  // Use provided tablist locator, or locate tab directly on page
+  // .first() used as fallback because page has two tablists with same aria-label
+  // Sub-tabs (Upcoming, Ongoing, Past) are unique by name so .first() is safe
+  const tab = tabList
+    ? tabList.getByRole('tab', { name: tabName, exact: true })
+    : page.getByRole('tab', { name: tabName, exact: true }).first();
+
+  // Wait for tab to be visible, scroll into view, then click
+  await expect(tab).toBeVisible({ timeout: 10000 });
+  await tab.scrollIntoViewIfNeeded();
+  await tab.click();
+
+  // Verify the tab is now selected
+  await expect(tab).toHaveAttribute('aria-selected', 'true');
+
+  return tab;
+}
+
 // ====================================================
 // TEST SCENARIO 3: Submission becomes active and visible in Ongoing tab
 // ====================================================
@@ -14,102 +107,59 @@ test('Submission becomes active and visible in Ongoing tab', async ({ page }) =>
   // Allow up to 60 seconds for this test to complete
 
   // ====================================================
-  // STEP 1: Open the website
+  // STEP 1: Open the dashboard page and wait for DOM to load
   // ====================================================
   await page.goto(
-    'https://alphavision.hack2skill.com/event/platform-automation-sandbox/dashboard/roadmap'
+    'https://alphavision.hack2skill.com/event/platform-automation-sandbox/dashboard/roadmap',
+    { waitUntil: 'domcontentloaded' }
   );
-  await page.waitForTimeout(3000);
-  // Wait for the page to fully load
 
   // ====================================================
-  // STEP 2: Accept cookie popup if it appears
+  // STEP 2: Dismiss cookie banner if it appears
   // ====================================================
-  const cookieBtn = page.locator('[data-id="accept-cookies"]');
-  // Locate the cookie accept button by its data-id attribute
-
-  if (await cookieBtn.isVisible({ timeout: 5000 }).catch(() => false)) {
-    // If the cookie button is visible, click it — otherwise skip
-    await cookieBtn.click();
-    await cookieBtn.waitFor({ state: 'hidden' });
-    // Wait until the cookie popup disappears before proceeding
-    console.log('Cookie accepted');
-  }
+  await dismissCookieBanner(page);
 
   // ====================================================
   // STEP 3: Log in with email and OTP
   // ====================================================
-  await page.getByPlaceholder('Enter Email').fill('amar@hack2skill.com');
-  // Fill in the email address
+  await loginWithOtp(page, 'amar@hack2skill.com', '123456');
 
-  await page.locator('[data-id="auth-login-button"]').click();
-  // Click the login button to trigger OTP
-
-  await page.waitForTimeout(3000);
-  // Wait for the OTP input screen to load
-
-  const otp = '123456';
-  // The OTP to enter
-
-  const otpInputs = page.locator('[data-id="auth-otp-input"]');
-  // Locate all OTP input boxes (one box per digit)
-
-  for (let i = 0; i < otp.length; i++) {
-    await otpInputs.nth(i).fill(otp[i]);
-    // Fill each digit into its corresponding input box
-  }
-
-  await page.locator('[data-id="auth-verify-button"]').click();
-  // Submit the OTP
-
-  await page.waitForTimeout(3000);
-  // Wait for the dashboard to load after login
-
-  console.log('Login successful');
+  // Wait for dashboard main tablist to be visible after login
+  // Use .first() to avoid strict mode error — page has two tablists with same aria-label
+  const tabList = page.getByRole('tablist').first();
+  await expect(tabList).toBeVisible({ timeout: 15000 });
 
   // ====================================================
   // STEP 4: Navigate to the Submissions tab
   // ====================================================
-  const tabList = page.getByRole('tablist');
-  // Locate the main tab bar (Roadmap, Submissions, etc.)
-
-  const submissionsTab = tabList.getByRole('tab', { name: 'Submissions', exact: true });
-  // Find the exact "Submissions" tab within the tab bar
-
-  await submissionsTab.scrollIntoViewIfNeeded();
-  await submissionsTab.click();
-  // Scroll to and click the Submissions tab
-
-  await expect(submissionsTab).toHaveAttribute('aria-selected', 'true');
-  // Verify the tab is now selected
-
+  await clickTab(page, 'Submissions', tabList);
   console.log('Navigated to Submissions tab');
 
   // ====================================================
   // STEP 5: Check all three sub-tabs to find where the submission is
   // ====================================================
-  // This pre-check helps us give a clear failure reason
+  // This pre-check gives a clear failure reason
   // if the submission is not in the Ongoing tab
 
   // Check Upcoming tab
-  const upcomingTab = page.getByRole('tab', { name: 'Upcoming', exact: true });
-  await upcomingTab.click();
-  await page.waitForTimeout(1000);
-  const inUpcoming = await page.locator('text=Project Submission').isVisible().catch(() => false);
+  await clickTab(page, 'Upcoming');
+  const inUpcoming = await page.locator('text=Project Submission')
+    .isVisible({ timeout: 3000 })
+    .catch(() => false);
   // true if submission card is found in Upcoming tab
 
   // Check Past tab
-  const pastTab = page.getByRole('tab', { name: 'Past', exact: true });
-  await pastTab.click();
-  await page.waitForTimeout(1000);
-  const inPast = await page.locator('text=Project Submission').isVisible().catch(() => false);
+  await clickTab(page, 'Past');
+  const inPast = await page.locator('text=Project Submission')
+    .isVisible({ timeout: 3000 })
+    .catch(() => false);
   // true if submission card is found in Past tab
 
   // Check Ongoing tab
-  const ongoingTab = page.getByRole('tab', { name: 'Ongoing', exact: true });
-  await ongoingTab.click();
-  await page.waitForTimeout(1000);
-  const inOngoing = await page.locator('text=Project Submission').isVisible().catch(() => false);
+  await clickTab(page, 'Ongoing');
+  const inOngoing = await page.locator('text=Project Submission')
+    .isVisible({ timeout: 3000 })
+    .catch(() => false);
   // true if submission card is found in Ongoing tab
 
   console.log(`Submission status — Upcoming: ${inUpcoming}, Ongoing: ${inOngoing}, Past: ${inPast}`);
@@ -120,71 +170,58 @@ test('Submission becomes active and visible in Ongoing tab', async ({ page }) =>
 
   if (inUpcoming && !inOngoing) {
     // Submission window has not started yet
-    console.log('TEST FAILED - Submission is currently in the Upcoming tab, not in Ongoing. The submission window has not opened yet. Run this test when the submission window is active.');
+    console.log('TEST FAILED - Submission is in Upcoming tab. Submission window has not opened yet.');
     throw new Error('Submission is in Upcoming tab — submission window has not started yet.');
   }
 
   if (inPast && !inOngoing) {
     // Submission window has already ended
-    console.log('TEST FAILED - Submission has moved to the Past tab, meaning the submission window has already closed. Run this test when the submission window is active.');
+    console.log('TEST FAILED - Submission is in Past tab. Submission window has already closed.');
     throw new Error('Submission is in Past tab — submission window has already closed.');
   }
 
   if (!inOngoing && !inUpcoming && !inPast) {
     // Submission not found anywhere
-    console.log('TEST FAILED - Submission was not found in any tab (Upcoming, Ongoing, or Past). Please verify that the submission module exists and that the correct user account is logged in.');
+    console.log('TEST FAILED - Submission not found in any tab. Verify login and submission module.');
     throw new Error('Submission not found in any tab — check login and submission module.');
   }
 
   console.log('Submission confirmed in Ongoing tab before page refresh');
 
   // ====================================================
-  // STEP 7: Refresh the page
+  // STEP 7: Refresh the page and wait for DOM to reload
   // ====================================================
-  await page.reload();
-  // Simulate pressing F5 / browser refresh
+  await page.reload({ waitUntil: 'domcontentloaded' });
+  // Simulate pressing F5 — domcontentloaded avoids hanging on push notification iframes
 
-  await page.waitForLoadState('domcontentloaded');
-  // Wait for the HTML structure to fully reload
-
-  await page.waitForTimeout(3000);
-  // Wait for React components to re-render
+  // Wait for main tablist to re-appear after React re-renders
+  // Use .first() to target the main dashboard tablist only
+  await expect(page.getByRole('tablist').first()).toBeVisible({ timeout: 15000 });
 
   console.log('Page refreshed successfully');
 
   // ====================================================
   // STEP 8: Navigate back to Submissions → Ongoing after refresh
   // ====================================================
-  // After a page refresh, the tab selection resets
-  // So we need to navigate back to Submissions → Ongoing manually
+  // After a page refresh, tab selection resets
+  // so we must navigate back to Submissions → Ongoing manually
 
-  const submissionsTabAfterRefresh = page.getByRole('tablist').getByRole('tab', { name: 'Submissions', exact: true });
-  await submissionsTabAfterRefresh.scrollIntoViewIfNeeded();
-  await submissionsTabAfterRefresh.click();
-  await expect(submissionsTabAfterRefresh).toHaveAttribute('aria-selected', 'true');
-  // Confirm Submissions tab is selected
-
-  const ongoingTabAfterRefresh = page.getByRole('tab', { name: 'Ongoing', exact: true });
-  await ongoingTabAfterRefresh.scrollIntoViewIfNeeded();
-  await ongoingTabAfterRefresh.click();
-  await expect(ongoingTabAfterRefresh).toHaveAttribute('aria-selected', 'true');
-  // Confirm Ongoing sub-tab is selected
+  const tabListAfterRefresh = page.getByRole('tablist').first();
+  await clickTab(page, 'Submissions', tabListAfterRefresh);
+  await clickTab(page, 'Ongoing');
 
   console.log('Navigated back to Ongoing tab after refresh');
 
   // ====================================================
   // STEP 9: MAIN ASSERTION — Submission still visible after refresh?
   // ====================================================
-  const visibleAfterRefresh = await page.locator('text=Project Submission').isVisible({ timeout: 10000 }).catch(() => false);
-
-  if (!visibleAfterRefresh) {
-    // Submission was visible before refresh but disappeared after — this is a bug
-    console.log('TEST FAILED - Submission was visible in the Ongoing tab before refresh, but it is no longer visible after refresh. This is a bug — refreshing the page should not cause the submission to disappear.');
-    throw new Error('Submission disappeared after page refresh — this is a bug.');
-  }
+  const submissionCard = page.locator('text=Project Submission');
+  await expect(submissionCard).toBeVisible({ timeout: 10000 });
+  // If submission disappeared after refresh, this assertion will fail with a clear message
 
   // ====================================================
   // FINAL: Test passed
   // ====================================================
   console.log('SCENARIO 3 PASSED - Submission is still visible in the Ongoing tab after page refresh.');
+
 });

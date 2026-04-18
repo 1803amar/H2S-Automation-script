@@ -1,52 +1,84 @@
 const { test, expect } = require('@playwright/test');
 
-// Open URL in browser
-test('Valid Login', async ({ page }) => {
-  await page.goto('https://alphavision.hack2skill.com/login');
+// Force a completely fresh browser context for this test file
+// Prevents cookie/session bleed from other tests running in the same suite
+test.use({ storageState: undefined });
 
-//   wait for 3 sec
-  await page.waitForTimeout(3000);
-
-//   if cookie message appears then click on accept cookies button
-  const cookieBtn = page.locator('[data-id="accept-cookies"]');
-  if (await cookieBtn.isVisible({ timeout: 5000 }).catch(() => false)) {
-    await cookieBtn.click();
-    await cookieBtn.waitFor({ state: 'hidden' });
-    console.log('✅ Cookie accepted'); 
+// ─── Helper: Dismiss cookie banner if it appears ──────────────────────────────
+async function dismissCookieBanner(page) {
+  const btn = page.locator('[data-id="accept-cookies"]');
+  try {
+    // Wait for cookie button to become visible (max 8 sec)
+    await expect(btn).toBeVisible({ timeout: 8000 });
+    await btn.click();
+    // Wait for banner to hide after clicking
+    await expect(btn).toBeHidden({ timeout: 8000 });
+  } catch {
+    // If banner never appeared, skip silently
+    console.log('ℹ️ Cookie banner not found, skipping');
   }
-
-//   Enter emaiid to login 
-  await page.getByPlaceholder('Enter Email').fill('amar@hack2skill.com');
-
-//   Click on login button
-  await page.locator('[data-id="auth-login-button"]').click();
-
-//   Wait for 3 sec
-  await page.waitForTimeout(3000);
-
-//   Enter OTP recived on entered Email id
-  // await page.locator('[data-id="auth-otp-input"][0]').fill('123456');
-  const otp = '123456';
-const otpInputs = page.locator('[data-id="auth-otp-input"]');
-
-for (let i = 0; i < otp.length; i++) {
-  await otpInputs.nth(i).fill(otp[i]);
 }
 
-//   Click on Verify button
-  await page.locator('[data-id="auth-verify-button"]').click();
+// ─── Test: Valid Login ─────────────────────────────────────────────────────────
+test('Valid Login', async ({ page }) => {
 
-//   Wait for 3 sec
-  await page.waitForTimeout(3000);
+  // STEP 1: Open login page and wait for DOM to load
+  // Using domcontentloaded instead of networkidle to avoid hanging
+  // on push notification iframes that never become idle
+  await page.goto('https://alphavision.hack2skill.com/login', {
+    waitUntil: 'domcontentloaded',
+  });
 
-//   Click on profile icon on navbar after login 
-  await page.locator('[data-id="nav-profile-button"]').click();
+  // STEP 2: Dismiss cookie banner if it appears
+  await dismissCookieBanner(page);
 
-  // Click on log out button
-  // await page.locator('[data-id="nav-logout-button"]').click();
-  await page.locator('[data-id="nav-logout-button"]:visible').click();
+  // STEP 3: Wait for email field to be visible, then fill it
+  const emailInput = page.getByPlaceholder('Enter Email');
+  await expect(emailInput).toBeVisible({ timeout: 15000 });
+  await emailInput.fill('amar@hack2skill.com');
 
+  // STEP 4: Wait for login button to be visible and enabled, then click
+  const loginBtn = page.locator('[data-id="auth-login-button"]');
+  await expect(loginBtn).toBeVisible();
+  await expect(loginBtn).toBeEnabled();
+  await loginBtn.click();
 
-  await page.waitForTimeout(3000);
+  // STEP 5: Wait for OTP screen heading to confirm page has transitioned
+  // Note: login button is removed from DOM once OTP screen loads
+  // so we must NOT check loginBtn after click — it will never be found
+  await expect(
+    page.getByRole('heading', { name: 'Verify Your Account' })
+  ).toBeVisible({ timeout: 15000 });
 
+  // STEP 6: Wait for OTP inputs to appear, verify count is 6, then fill each box
+  const otpInputs = page.locator('[data-id="auth-otp-input"]');
+  await expect(otpInputs.first()).toBeVisible({ timeout: 15000 });
+  await expect(otpInputs).toHaveCount(6);
+
+  const otp = '123456';
+  for (let i = 0; i < otp.length; i++) {
+    await otpInputs.nth(i).fill(otp[i]);
+  }
+
+  // STEP 7: Wait for verify button to be visible and enabled, then click
+  const verifyBtn = page.locator('[data-id="auth-verify-button"]');
+  await expect(verifyBtn).toBeVisible();
+  await expect(verifyBtn).toBeEnabled();
+  await verifyBtn.click();
+
+  // STEP 8: Wait for profile button to appear in navbar after login
+  const profileBtn = page.locator('[data-id="nav-profile-button"]');
+  await expect(profileBtn).toBeVisible({ timeout: 15000 });
+  await profileBtn.click();
+
+  // STEP 9: Wait for logout link to be visible, then click
+  const logoutBtn = page.getByRole('link', { name: /^logout$/i });
+  await expect(logoutBtn).toBeVisible();
+  await logoutBtn.click();
+
+  // STEP 10: Verify user is redirected back to homepage after logout
+  await expect(page).toHaveURL(url =>
+    url.origin === 'https://alphavision.hack2skill.com' &&
+    url.pathname === '/'
+  );
 });
